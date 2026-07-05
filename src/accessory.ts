@@ -1,68 +1,114 @@
 import { OneCMatterPlatform } from './platform.js';
 import { XiaomiLocalClient } from './mi-local.js';
 
-const SUCTION_MODES = [
-  { label: 'Quiet', mode: 0, modeTags: [{ value: 2 }, { value: 16385 }] },
-  { label: 'Default', mode: 1, modeTags: [{ value: 0 }, { value: 16385 }] },
-  { label: 'Medium', mode: 2, modeTags: [{ value: 16384 }, { value: 16385 }] },
-  { label: 'Strong', mode: 3, modeTags: [{ value: 7 }, { value: 16385 }] },
+// ---------------------------------------------------------------------------
+// Xiaomi S12 (xiaomi.vacuum.b106eu) MIoT mapping.
+//
+// NOTE: these siid/piid values were validated empirically against a real
+// device (firmware 475022SD2401A18955) using a property scan, because the
+// published miot-spec page did not match this firmware's actual behaviour
+// for the "status" property. See conversation history for the validation
+// steps (charging / paused / returning / cleaning states were each
+// physically reproduced and captured).
+//
+// Confirmed:
+//   siid 2, piid 1  -> status: 1 Standby, 2 Paused, 3 Returning, 4 Charging
+//                       (just arrived/aligning), 5 Vacuuming (OR docked,
+//                       disambiguated by piid 2), 6 Vacuum+Mop, 7 Mopping
+//   siid 2, piid 2  -> dock flag: 0 away from dock, non-zero = docked/charging
+//                       (NOT a fault code despite the generic spec)
+//   siid 3, piid 1  -> battery percentage
+//   siid 7, piid 3  -> box state: 0=None, 1=DustBox, 2=WaterBox, 3=TwoInOne
+//   siid 7, piid 4  -> cloth state: 0=None, 1=Exist (mop pad installed)
+//   siid 7, piid 5  -> suction level: 0 Quiet, 1 Standard, 2 Medium, 3 Turbo
+//   siid 7, piid 6  -> water level: 0=Low, 1=Mid, 2=High (3 levels only)
+//   siid 7, piid 8  -> side brush life %
+//   siid 7, piid 10 -> main brush life %
+//   siid 7, piid 12 -> filter (hypa) life %
+//
+// NOT yet empirically confirmed (taken from the published miot-spec page,
+// use with caution and verify before relying on them):
+//   siid 2, aiid 1  -> start sweep
+//   siid 2, aiid 2  -> stop sweep
+//   siid 7, aiid 7  -> go charge (param piid 43 = 1)
+//   siid 7, aiid 3  -> room clean (params piid 24 room ids, piid 25 mode,
+//                       piid 26 oper: 1 start / 0 stop)
+//   siid 7, aiid 1  -> reset consumable (param piid 17: 1 Main/2 Side/3 Hypa/4 Cloth)
+//   siid 4, piid 1  -> alarm/locate (set true to trigger "find me" chime) --
+//                       there is no dedicated locate action in the published
+//                       spec, this is a best-effort guess.
+// ---------------------------------------------------------------------------
+
+const START_VACUUM_AIID = 3;      // start vacuum only
+const START_VACUUM_MOP_AIID = 5;  // start vacuum+mop
+const START_MOP_AIID = 6;         // start mop only
+
+const CLEAN_MODES = [
+  { label: 'Vacuum Quiet',        mode: 0, suction: 0, waterLevel: 0, startAiid: START_VACUUM_AIID },
+  { label: 'Vacuum Standard',     mode: 1, suction: 1, waterLevel: 0, startAiid: START_VACUUM_AIID },
+  { label: 'Vacuum Medium',       mode: 2, suction: 2, waterLevel: 0, startAiid: START_VACUUM_AIID },
+  { label: 'Vacuum Turbo',        mode: 3, suction: 3, waterLevel: 0, startAiid: START_VACUUM_AIID },
+  { label: 'Vacuum & Mop Quiet',  mode: 4, suction: 0, waterLevel: 2, startAiid: START_VACUUM_MOP_AIID },
+  { label: 'Vacuum & Mop',        mode: 5, suction: 1, waterLevel: 2, startAiid: START_VACUUM_MOP_AIID },
+  { label: 'Vacuum & Mop Medium', mode: 6, suction: 2, waterLevel: 2, startAiid: START_VACUUM_MOP_AIID },
+  { label: 'Vacuum & Mop Turbo',  mode: 7, suction: 3, waterLevel: 2, startAiid: START_VACUUM_MOP_AIID },
+  { label: 'Mop Only',            mode: 8, suction: 0, waterLevel: 2, startAiid: START_MOP_AIID },
 ];
 
-const DEVICE_STATUS_LABELS: Record<number, string> = {
-  1: 'Cleaning',
-  2: 'Idle',
-  3: 'Paused',
-  4: 'Error',
-  5: 'Returning to dock',
-  6: 'Charging',
-  7: 'Mopping',
-  12: 'Sweeping and mopping',
-  13: 'Charging complete',
-  14: 'Upgrading',
-};
+const STATUS_SIID = 2;
+const STATUS_PIID = 1;
+const DOCK_FLAG_PIID = 2; // not a real fault code on this firmware, see notes above
+const SWEEP_MODE_PIID = 4; // 0=Vacuum, 1=Vacuum+Mop, 2=Mop only — confirmed writable
 
-const FAULT_LABELS: Record<number, string> = {
-  0: 'No fault',
-  1: 'Left wheel error',
-  2: 'Right wheel error',
-  3: 'Cliff sensor error',
-  4: 'Low battery',
-  5: 'Main brush blocked',
-  6: 'Side brush error',
-  7: 'Fan error',
-  8: 'Dust compartment or water tank issue',
-  9: 'Charging error',
-  10: 'Water shortage',
-  11: 'Vacuum is lifted or off the ground',
-  12: 'Stuck or trapped',
-  13: 'Restricted area or virtual wall detected',
-  14: 'Dust compartment missing',
-  15: 'Water tank missing',
-};
+const BATTERY_SIID = 3;
+const BATTERY_PIID = 1;
 
-// Segment ("room") cleaning, exposed via the Matter ServiceArea cluster.
-// dreame.vacuum.mc1808: action siid 18 / aiid 1 (start-clean), with work-mode
-// piid 1 = 18 (room mode) and clean-info piid 21 = {"selects":[[id,repeats,suction,3,1]]}.
-const CLEAN_SIID = 18;
-const CLEAN_START_AIID = 1;
-const WORK_MODE_PIID = 1;
-const CLEAN_INFO_PIID = 21;
-const WORK_MODE_ROOM = 18;
+const SWEEP_SIID = 7;
+const BOX_STATE_PIID = 3;   // 0=None, 1=DustBox, 2=WaterBox, 3=TwoInOne
+const CLOTH_STATE_PIID = 4; // 0=None, 1=Exist
+const SUCTION_PIID = 5;
+const WATER_LEVEL_PIID = 6; // 0=Low, 1=Mid, 2=High (3 levels only)
+const SIDE_BRUSH_LIFE_PIID = 8;
+const MAIN_BRUSH_LIFE_PIID = 10;
+const FILTER_LIFE_PIID = 12;
+
+const START_SWEEP_AIID = 1;
+const STOP_SWEEP_AIID = 2;
+const GO_CHARGE_AIID = 7;
+const GO_CHARGE_PARAM_PIID = 43;
+const RESET_CONSUMABLE_AIID = 1;
+const RESET_CONSUMABLE_PIID = 17;
+
+const ROOM_CLEAN_AIID = 3;
+const ROOM_IDS_PIID = 24;
+const ROOM_MODE_PIID = 25;
+const ROOM_OPER_PIID = 26;
+const ROOM_OPER_START = 1;
+const ROOM_OPER_PAUSE = 2;
+const ROOM_OPER_STOP = 0;
+
+const ALARM_SIID = 4;
+const ALARM_PIID = 1;
+
 const DEFAULT_MATTER_UPDATE_TIMEOUT_MS = 10000;
 const DEFAULT_STATUS_UPDATE_WATCHDOG_MS = 90000;
 
 const CONSUMABLES = [
-  { key: 'mainBrush', label: 'Main brush', siid: 26, timePiid: 1, lifePiid: 2 },
-  { key: 'filter', label: 'Filter', siid: 27, timePiid: 2, lifePiid: 1 },
-  { key: 'sideBrush', label: 'Side brush', siid: 28, timePiid: 1, lifePiid: 2 },
+  { key: 'mainBrush', label: 'Main brush', siid: SWEEP_SIID, lifePiid: MAIN_BRUSH_LIFE_PIID },
+  { key: 'filter', label: 'Filter', siid: SWEEP_SIID, lifePiid: FILTER_LIFE_PIID },
+  { key: 'sideBrush', label: 'Side brush', siid: SWEEP_SIID, lifePiid: SIDE_BRUSH_LIFE_PIID },
 ];
 
-function describeStatus(status: number | undefined) {
-  return status === undefined ? 'Unknown' : DEVICE_STATUS_LABELS[status] || `Unknown status ${status}`;
-}
-
-function describeFault(fault: number | undefined) {
-  return fault === undefined ? 'Unknown fault' : FAULT_LABELS[fault] || `Unknown fault ${fault}`;
+function describeStatus(status: number | undefined, dockFlag: number | undefined) {
+  if (status === undefined) return 'Unknown';
+  if (status === 1) return 'Standby';
+  if (status === 2) return 'Paused';
+  if (status === 3) return 'Returning to dock';
+  if (status === 4) return 'Docked (not yet charging)';
+  if (status === 5) return dockFlag !== undefined && dockFlag !== 0 ? 'Charging (docked)' : 'Vacuuming';
+  if (status === 6) return 'Vacuum & Mop';
+  if (status === 7) return 'Mopping';
+  return `Unknown status ${status}`;
 }
 
 export class OneCVacuumAccessory {
@@ -72,7 +118,12 @@ export class OneCVacuumAccessory {
   private consecutiveFailures = 0;
   private nextAllowedUpdate = 0;
   private readonly lastClusterState = new Map<string, string>();
+  private lastCleanModeIndex = 1; // Vacuum Standard
   private lastConsumableSummary = '';
+  private lastRoomCleanAreas: number[] = [];
+  private cleanModeAtPause = -1; // mode index when pause was triggered
+  private initialSyncDone = false; // sync clean mode from device only once on startup
+  private lastChargeState = -1; // track charge state changes separately
   private readonly matterUpdateTimeoutMs: number;
   private readonly statusUpdateWatchdogMs: number;
 
@@ -81,7 +132,6 @@ export class OneCVacuumAccessory {
     private readonly accessory: any, // MatterAccessory
     private readonly client: XiaomiLocalClient,
   ) {
-    const matter = this.platform.api.matter!;
     const matterUpdateTimeout = Number(this.platform.config.matterUpdateTimeout);
     const statusUpdateWatchdog = Number(this.platform.config.statusUpdateWatchdog);
     this.matterUpdateTimeoutMs = Number.isFinite(matterUpdateTimeout) && matterUpdateTimeout > 0
@@ -96,39 +146,108 @@ export class OneCVacuumAccessory {
       identify: {
         identify: async () => {
           this.platform.log.info('Matter: Identify command');
-          await this.client.doAction(17, 1); // Locate vacuum / play prompt
+          try {
+            // Best-effort: no dedicated locate action confirmed for this model yet.
+            await this.client.setProperty(ALARM_SIID, ALARM_PIID, true);
+          } catch (e: any) {
+            this.platform.log.warn('Locate (identify) failed - this action is unconfirmed for the S12:', e.message);
+          }
           this.scheduleStatusUpdate();
         },
       },
       rvcOperationalState: {
         pause: async () => {
           this.platform.log.info('Matter: Pause command');
-          await this.client.doAction(3, 2); // Stop Sweep
+          this.cleanModeAtPause = this.lastCleanModeIndex; // remember mode at pause
+          await this.client.doAction(SWEEP_SIID, ROOM_CLEAN_AIID, [
+            { piid: ROOM_IDS_PIID, value: '' },
+            { piid: ROOM_MODE_PIID, value: 0 },
+            { piid: ROOM_OPER_PIID, value: ROOM_OPER_PAUSE },
+          ]);
           await this.setOptimisticRunState(2, 0);
           this.scheduleStatusUpdate();
         },
         resume: async () => {
           this.platform.log.info('Matter: Resume command');
-          await this.client.doAction(3, 1); // Start Sweep
+          await this.client.doAction(SWEEP_SIID, ROOM_CLEAN_AIID, [
+            { piid: ROOM_IDS_PIID, value: '' },
+            { piid: ROOM_MODE_PIID, value: 0 },
+            { piid: ROOM_OPER_PIID, value: ROOM_OPER_START },
+          ]);
           await this.setOptimisticRunState(1, 1);
           this.scheduleStatusUpdate();
         },
         goHome: async () => {
           this.platform.log.info('Matter: Go Home command');
-          await this.client.doAction(2, 1); // Start Charge
+          await this.client.doAction(SWEEP_SIID, GO_CHARGE_AIID, [
+            { piid: GO_CHARGE_PARAM_PIID, value: 1 },
+          ]);
           await this.setOptimisticRunState(64, 0);
           this.scheduleStatusUpdate();
         },
       },
       rvcRunMode: {
         changeToMode: async (args: any) => {
-          this.platform.log.info('Matter: Change to mode', args.newMode);
-          if (args.newMode === 1) {
-            await this.client.doAction(3, 1); // Start Sweep
-            await this.setOptimisticRunState(1, 1);
-          } else {
-            await this.client.doAction(3, 2); // Stop Sweep
+          const newMode = Number(args.newMode);
+          this.platform.log.info(`Matter: Run mode change to ${newMode}`);
+          if (newMode === 0) {
+            // Stop
+            await this.client.doAction(STATUS_SIID, STOP_SWEEP_AIID);
             await this.setOptimisticRunState(0, 0);
+          } else {
+            // Check if paused — resume instead of starting fresh
+            const props = await this.client.getProperties([{ siid: STATUS_SIID, piid: STATUS_PIID }]);
+            const currentStatus = props.find((p: any) => p.siid === STATUS_SIID && p.piid === STATUS_PIID)?.value;
+            if (currentStatus === 2) {
+              const modeAtPause = CLEAN_MODES.find(m => m.mode === this.cleanModeAtPause);
+              const newCleanMode = CLEAN_MODES.find(m => m.mode === this.lastCleanModeIndex) ?? CLEAN_MODES[1];
+              const typeChanged = modeAtPause && newCleanMode && modeAtPause.startAiid !== newCleanMode.startAiid;
+              const modeChangedWhilePaused = this.cleanModeAtPause !== -1 && this.cleanModeAtPause !== this.lastCleanModeIndex;
+              const autoPaused = this.cleanModeAtPause === -1;
+              this.platform.log.info(`Matter: pause state — cleanModeAtPause=${this.cleanModeAtPause} lastCleanModeIndex=${this.lastCleanModeIndex} typeChanged=${typeChanged} modeChangedWhilePaused=${modeChangedWhilePaused} autoPaused=${autoPaused}`);
+
+              if (autoPaused || (modeChangedWhilePaused && typeChanged)) {
+                // Auto-pause (error) or cleaning type changed — stop and start fresh
+                this.platform.log.info(`Matter: ${autoPaused ? 'Auto-pause detected' : 'Cleaning type changed'}, starting fresh with ${newCleanMode.label}`);
+                await this.client.doAction(SWEEP_SIID, ROOM_CLEAN_AIID, [
+                  { piid: ROOM_IDS_PIID, value: '' },
+                  { piid: ROOM_MODE_PIID, value: 0 },
+                  { piid: ROOM_OPER_PIID, value: ROOM_OPER_STOP },
+                ]);
+                await new Promise(res => setTimeout(res, 500));
+                await this.client.setProperty(SWEEP_SIID, SUCTION_PIID, newCleanMode.suction);
+                if (newCleanMode.waterLevel > 0) {
+                  await this.client.setProperty(SWEEP_SIID, WATER_LEVEL_PIID, newCleanMode.waterLevel);
+                }
+                await this.client.doAction(STATUS_SIID, newCleanMode.startAiid);
+              } else if (modeChangedWhilePaused && !typeChanged) {
+                // Only suction changed — set new suction and resume
+                this.platform.log.info(`Matter: Suction changed while paused, resuming with ${newCleanMode.label}`);
+                await this.client.setProperty(SWEEP_SIID, SUCTION_PIID, newCleanMode.suction);
+                await this.client.doAction(SWEEP_SIID, ROOM_CLEAN_AIID, [
+                  { piid: ROOM_IDS_PIID, value: '' },
+                  { piid: ROOM_MODE_PIID, value: 0 },
+                  { piid: ROOM_OPER_PIID, value: ROOM_OPER_START },
+                ]);
+              } else {
+                this.platform.log.info('Matter: Resuming from pause');
+                await this.client.doAction(SWEEP_SIID, ROOM_CLEAN_AIID, [
+                  { piid: ROOM_IDS_PIID, value: '' },
+                  { piid: ROOM_MODE_PIID, value: 0 },
+                  { piid: ROOM_OPER_PIID, value: ROOM_OPER_START },
+                ]);
+              }
+              this.cleanModeAtPause = -1;
+            } else {
+              const cleanMode = CLEAN_MODES.find(m => m.mode === this.lastCleanModeIndex) ?? CLEAN_MODES[1];
+              this.platform.log.info(`Matter: Starting with clean mode: ${cleanMode.label} (aiid ${cleanMode.startAiid})`);
+              await this.client.setProperty(SWEEP_SIID, SUCTION_PIID, cleanMode.suction);
+              if (cleanMode.waterLevel > 0) {
+                await this.client.setProperty(SWEEP_SIID, WATER_LEVEL_PIID, cleanMode.waterLevel);
+              }
+              await this.client.doAction(STATUS_SIID, cleanMode.startAiid);
+            }
+            await this.setOptimisticRunState(1, 1);
           }
           this.scheduleStatusUpdate();
         },
@@ -136,12 +255,10 @@ export class OneCVacuumAccessory {
       rvcCleanMode: {
         changeToMode: async (args: any) => {
           const nextMode = Number(args.newMode);
-          if (!SUCTION_MODES.some(mode => mode.mode === nextMode)) {
-            throw new Error(`Unsupported suction mode: ${args.newMode}`);
-          }
-
-          this.platform.log.info(`Matter: Change suction mode to ${SUCTION_MODES[nextMode].label}`);
-          await this.client.setProperty(18, 6, nextMode); // Cleaning Mode / suction level
+          const cleanMode = CLEAN_MODES.find(m => m.mode === nextMode);
+          if (!cleanMode) throw new Error(`Unsupported clean mode: ${args.newMode}`);
+          this.platform.log.info(`Matter: Clean mode → ${cleanMode.label}`);
+          this.lastCleanModeIndex = nextMode;
           const matter = this.platform.api.matter!;
           await this.updateClusterState(matter.clusterNames.RvcCleanMode, { currentMode: nextMode }, true);
           this.scheduleStatusUpdate(500);
@@ -150,6 +267,7 @@ export class OneCVacuumAccessory {
     };
 
     // Experimental, opt-in: room-by-room cleaning via the ServiceArea cluster.
+    // UNCONFIRMED for the S12 - verify piid 24/25/26 against your unit before relying on this.
     const rooms = Array.isArray(this.platform.config.rooms) ? this.platform.config.rooms : [];
     if (this.platform.config.enableRoomCleaning === true && rooms.length > 0) {
       this.accessory.handlers.serviceArea = {
@@ -163,7 +281,7 @@ export class OneCVacuumAccessory {
     // Polling
     const interval = (this.platform.config.pollInterval || 30) * 1000;
     setInterval(() => this.updateStatus(), interval);
-    setTimeout(() => this.updateStatus(), 1000); // Initial update after Matter registration settles
+    setTimeout(() => this.updateStatus(true), 1000); // Initial update after Matter registration settles
   }
 
   private scheduleStatusUpdate(delay = 500) {
@@ -176,18 +294,39 @@ export class OneCVacuumAccessory {
       return;
     }
 
-    const repeats = Number(this.platform.config.roomCleanRepeats ?? 1);
-    const suction = Number(this.platform.config.roomCleanSuction ?? 2);
-    // mc1808 selects tuple: [roomId, repeats, suction, 3, 1]
-    const selects = areaIds.map(id => [Number(id), repeats, suction, 3, 1]);
-    const cleanInfo = JSON.stringify({ selects });
+    const roomIds = areaIds.map(id => Number(id)).join(',');
+    const cleanMode = CLEAN_MODES.find(m => m.mode === this.lastCleanModeIndex) ?? CLEAN_MODES[1];
 
-    this.platform.log.info(`Matter: Start room clean for area(s) ${areaIds.join(', ')} -> ${cleanInfo}`);
-    await this.client.doAction(CLEAN_SIID, CLEAN_START_AIID, [
-      { piid: WORK_MODE_PIID, value: WORK_MODE_ROOM },
-      { piid: CLEAN_INFO_PIID, value: cleanInfo },
+    this.platform.log.info(`Matter: Start room clean for area(s) ${roomIds} with mode: ${cleanMode.label}`);
+
+    // Set suction and water level first
+    await this.client.setProperty(SWEEP_SIID, SUCTION_PIID, cleanMode.suction);
+    if (cleanMode.waterLevel > 0) {
+      await this.client.setProperty(SWEEP_SIID, WATER_LEVEL_PIID, cleanMode.waterLevel);
+    }
+
+    // Set sweep mode based on clean mode
+    let sweepMode = 0; // Vacuum only
+    if (cleanMode.startAiid === START_VACUUM_MOP_AIID) sweepMode = 1; // Vacuum + Mop
+    if (cleanMode.startAiid === START_MOP_AIID) sweepMode = 2; // Mop only
+    await this.client.setProperty(STATUS_SIID, SWEEP_MODE_PIID, sweepMode);
+
+    await this.client.doAction(SWEEP_SIID, ROOM_CLEAN_AIID, [
+      { piid: ROOM_IDS_PIID, value: roomIds },
+      { piid: ROOM_MODE_PIID, value: 0 }, // 0 = Global
+      { piid: ROOM_OPER_PIID, value: 1 }, // 1 = Start
     ]);
     await this.setOptimisticRunState(1, 1);
+
+    // Set selectedAreas but leave currentArea null — Home app shows "navigating to area"
+    // currentArea will be updated to areaIds[0] once cleaning starts (in updateStatus)
+    const matter = this.platform.api.matter!;
+    await this.updateClusterState(matter.clusterNames.ServiceArea, {
+      currentArea: null,
+      selectedAreas: areaIds,
+    }, true);
+    this.lastRoomCleanAreas = areaIds;
+
     this.scheduleStatusUpdate();
   }
 
@@ -254,46 +393,49 @@ export class OneCVacuumAccessory {
     const token = ++this.updateToken;
     try {
       const props = await this.client.getProperties([
-        { siid: 3, piid: 1 }, // Fault
-        { siid: 3, piid: 2 }, // Status
-        { siid: 2, piid: 1 }, // Battery Level
-        { siid: 2, piid: 2 }, // Charging State
-        { siid: 18, piid: 6 }, // Cleaning Mode / suction level
-        ...CONSUMABLES.flatMap(item => [
-          { siid: item.siid, piid: item.timePiid },
-          { siid: item.siid, piid: item.lifePiid },
-        ]),
+        { siid: STATUS_SIID, piid: STATUS_PIID },
+        { siid: STATUS_SIID, piid: DOCK_FLAG_PIID },
+        { siid: STATUS_SIID, piid: SWEEP_MODE_PIID },
+        { siid: BATTERY_SIID, piid: BATTERY_PIID },
+        { siid: SWEEP_SIID, piid: SUCTION_PIID },
+        ...CONSUMABLES.map(item => ({ siid: item.siid, piid: item.lifePiid })),
       ]);
 
       if (!props || props.length === 0) return;
 
-      const fault = props.find((p: any) => p.siid === 3 && p.piid === 1)?.value;
-      const status = props.find((p: any) => p.siid === 3 && p.piid === 2)?.value;
-      const battery = props.find((p: any) => p.siid === 2 && p.piid === 1)?.value;
-      const charging = props.find((p: any) => p.siid === 2 && p.piid === 2)?.value;
-      const cleaningMode = props.find((p: any) => p.siid === 18 && p.piid === 6)?.value;
+      const status = props.find((p: any) => p.siid === STATUS_SIID && p.piid === STATUS_PIID)?.value;
+      const dockFlag = props.find((p: any) => p.siid === STATUS_SIID && p.piid === DOCK_FLAG_PIID)?.value;
+      const sweepMode = props.find((p: any) => p.siid === STATUS_SIID && p.piid === SWEEP_MODE_PIID)?.value;
+      const battery = props.find((p: any) => p.siid === BATTERY_SIID && p.piid === BATTERY_PIID)?.value;
+      const suctionMode = props.find((p: any) => p.siid === SWEEP_SIID && p.piid === SUCTION_PIID)?.value;
       const consumables = CONSUMABLES.map(item => ({
         ...item,
-        time: props.find((p: any) => p.siid === item.siid && p.piid === item.timePiid)?.value,
         life: props.find((p: any) => p.siid === item.siid && p.piid === item.lifePiid)?.value,
       }));
 
-      this.platform.log.debug(`Vacuum status: ${describeStatus(status)}, fault: ${describeFault(fault)}`);
-      if (fault !== undefined && fault !== 0) {
-        this.platform.log.warn(`Vacuum fault ${fault}: ${describeFault(fault)}`);
-      }
+      // dockFlag values confirmed empirically:
+      // 2103, 2104 = docked/charging
+      // 2108 = repositioning (localising on map, just left dock)
+      // 2110 = leaving dock
+      // 0 = away from dock (cleaning/navigating)
+      const DOCK_FLAGS_DOCKED = new Set([2103, 2104]);
+      const isDocked = status === 4 || (status === 5 && dockFlag !== undefined && DOCK_FLAGS_DOCKED.has(dockFlag));
+      const isCleaning = (status === 5 && !isDocked) || status === 6 || status === 7;
+      const isStandby = status === 1;
+
+      this.platform.log.info(`Vacuum status: ${describeStatus(status, dockFlag)}`);
       this.logConsumables(consumables);
       this.consecutiveFailures = 0;
       this.nextAllowedUpdate = 0;
 
-      // Map Dreame 1C status to Matter RVC Operational State.
-      // DeviceStatus: 1 Sweeping, 2 Idle, 3 Paused, 4 Error, 5 GoCharging, 6 Charging, 12 SweepingAndMopping, 13 ChargingComplete
-      // Matter OperationalState: 0: Stopped, 1: Running, 2: Paused, 3: Error, 64: SeekingCharger
-      let opState = 0;
-      if ([1, 7, 12].includes(status)) opState = 1;
-      else if (status === 3) opState = 2;
-      else if (status === 4 || (fault !== undefined && fault !== 0)) opState = 3;
-      else if (status === 5) opState = 64;
+      // Matter RVC OperationalState: 0 Stopped, 1 Running, 2 Paused, 3 Error,
+      //   64 SeekingCharger, 65 Charging, 66 Docked
+      let opState = 0; // Stopped
+      if (isCleaning) opState = 1;        // Running
+      else if (status === 2) opState = 2; // Paused
+      else if (status === 3) opState = 64; // SeekingCharger
+      else if (isDocked) opState = battery === 100 ? 66 : 65; // Docked or Charging
+      else if (isStandby) opState = 0;    // Stopped
 
       const matter = this.platform.api.matter!;
       await this.updateClusterState(matter.clusterNames.RvcOperationalState, {
@@ -302,12 +444,41 @@ export class OneCVacuumAccessory {
 
       // Map to RvcRunMode
       await this.updateClusterState(matter.clusterNames.RvcRunMode, {
-        currentMode: [1, 7, 12].includes(status) ? 1 : 0,
+        currentMode: isCleaning ? 1 : 0,
       }, force);
 
-      if (cleaningMode !== undefined) {
+      // Update ServiceArea currentArea when cleaning room(s)
+      if (this.lastRoomCleanAreas.length > 0) {
+        if (isCleaning) {
+          await this.updateClusterState(matter.clusterNames.ServiceArea, {
+            currentArea: this.lastRoomCleanAreas[0],
+            selectedAreas: this.lastRoomCleanAreas,
+          }, false);
+        } else if (isDocked || isStandby) {
+          // Reset when done
+          await this.updateClusterState(matter.clusterNames.ServiceArea, {
+            currentArea: null,
+            selectedAreas: [],
+          }, false);
+          this.lastRoomCleanAreas = [];
+        }
+      }
+
+      // Map suction back to clean mode
+      if (suctionMode !== undefined) {
+        // On first poll (force=true), sync lastCleanModeIndex from device suction + sweep_mode
+        if (force && !this.initialSyncDone) {
+          this.initialSyncDone = true;
+          // sweepMode: 0=Vacuum, 1=Vacuum+Mop, 2=Mop only
+          const expectedAiid = sweepMode === 1 ? START_VACUUM_MOP_AIID : sweepMode === 2 ? START_MOP_AIID : START_VACUUM_AIID;
+          const matchedMode = CLEAN_MODES.find(m => m.suction === suctionMode && m.startAiid === expectedAiid);
+          if (matchedMode && matchedMode.mode !== this.lastCleanModeIndex) {
+            this.lastCleanModeIndex = matchedMode.mode;
+            this.platform.log.info(`Synced clean mode from device: ${matchedMode.label}`);
+          }
+        }
         await this.updateClusterState(matter.clusterNames.RvcCleanMode, {
-          currentMode: cleaningMode,
+          currentMode: this.lastCleanModeIndex,
         }, force);
       }
 
@@ -315,18 +486,24 @@ export class OneCVacuumAccessory {
       if (battery !== undefined) {
         // Matter batPercentRemaining is 0-200 (0.5% steps)
         let chargeState = 0; // Unknown
-        if ([1, 5].includes(charging)) {
-          chargeState = 1; // IsCharging
-        } else if (charging === 4) {
+        if (isDocked) {
           chargeState = battery === 100 ? 2 : 1; // IsAtFullCharge or IsCharging
-        } else if (charging === 2) {
+        } else if (isCleaning || isStandby || status === 2 || status === 3) {
           chargeState = 3; // IsNotCharging
         }
 
+        // batChargeLevel: 0=OK, 1=Warning, 2=Critical
+        const batChargeLevel = battery > 20 ? 0 : battery > 10 ? 1 : 2;
+
+        // batPercentRemaining is a "quiet" Matter attribute (minimumEmitInterval 10s) —
+        // it only gets reported to subscribers when a NON-quiet attribute changes in the
+        // same update. batChargeState is non-quiet, so we send it together every time to
+        // force batPercentRemaining to be emitted. We toggle batChargeState via a real value.
         await this.updateClusterState(matter.clusterNames.PowerSource, {
           batPercentRemaining: battery * 2,
+          batChargeLevel,
           batChargeState: chargeState,
-        }, force);
+        }, true);
       }
 
     } catch (e: any) {
@@ -344,14 +521,14 @@ export class OneCVacuumAccessory {
     }
   }
 
-  private logConsumables(consumables: Array<{ label: string; time: any; life: any }>) {
+  private logConsumables(consumables: Array<{ label: string; life: any }>) {
     if (this.platform.config.enableConsumableLogs === false) {
       return;
     }
 
     const summary = consumables
-      .filter(item => item.life !== undefined || item.time !== undefined)
-      .map(item => `${item.label}: ${item.life ?? '?'}% (${item.time ?? '?'}h left)`)
+      .filter(item => item.life !== undefined)
+      .map(item => `${item.label}: ${item.life}%`)
       .join(', ');
 
     if (!summary || summary === this.lastConsumableSummary) {

@@ -87,33 +87,45 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
         context: { device: { ip: this.config.ip, did: this.config.deviceId } },
         clusters: {
           rvcOperationalState: {
-            operationalState: 0, // Stopped
+            operationalState: 65, // Charging (safe default — aspirador está quase sempre na base)
             operationalStateList: [
               { operationalStateId: 0 }, // Stopped
               { operationalStateId: 1 }, // Running
               { operationalStateId: 2 }, // Paused
               { operationalStateId: 3 }, // Error
               { operationalStateId: 64 }, // SeekingCharger
+              { operationalStateId: 65 }, // Charging
+              { operationalStateId: 66 }, // Docked
             ],
           },
           rvcRunMode: {
             currentMode: 0,
             supportedModes: [
-              { label: 'Idle', mode: 0, modeTags: [{ value: 16384 }] }, // RvcRunMode.ModeTag.Idle
-              { label: 'Cleaning', mode: 1, modeTags: [{ value: 16385 }] }, // RvcRunMode.ModeTag.Cleaning
+              { label: 'Idle',     mode: 0, modeTags: [{ value: 16384 }] }, // Idle
+              { label: 'Cleaning', mode: 1, modeTags: [{ value: 16385 }] }, // Cleaning
             ],
           },
           rvcCleanMode: {
             currentMode: 1,
             supportedModes: [
-              { label: 'Quiet', mode: 0, modeTags: [{ value: 2 }, { value: 16385 }] },
-              { label: 'Default', mode: 1, modeTags: [{ value: 0 }, { value: 16385 }] },
-              { label: 'Medium', mode: 2, modeTags: [{ value: 16384 }, { value: 16385 }] },
-              { label: 'Strong', mode: 3, modeTags: [{ value: 7 }, { value: 16385 }] },
+              { label: 'Vacuum Quiet',        mode: 0, modeTags: [{ value: 16385 }, { value: 2 }] },
+              { label: 'Vacuum Standard',     mode: 1, modeTags: [{ value: 16385 }, { value: 1 }] },
+              { label: 'Vacuum Medium',       mode: 2, modeTags: [{ value: 16385 }, { value: 16384 }] },
+              { label: 'Vacuum Turbo',        mode: 3, modeTags: [{ value: 16385 }, { value: 7 }] },
+              { label: 'Vacuum & Mop Quiet',  mode: 4, modeTags: [{ value: 16385 }, { value: 16386 }, { value: 2 }] },
+              { label: 'Vacuum & Mop',        mode: 5, modeTags: [{ value: 16385 }, { value: 16386 }, { value: 1 }] },
+              { label: 'Vacuum & Mop Medium', mode: 6, modeTags: [{ value: 16385 }, { value: 16386 }, { value: 16384 }] },
+              { label: 'Vacuum & Mop Turbo',  mode: 7, modeTags: [{ value: 16385 }, { value: 16386 }, { value: 7 }] },
+              { label: 'Mop Only',            mode: 8, modeTags: [{ value: 16386 }] },
             ],
           },
           powerSource: {
+            status: 0,
+            order: 0,
+            description: 'Battery',
             batPercentRemaining: 200,
+            batChargeLevel: 0,
+            batReplaceability: 1,
             batChargeState: 0,
           },
         },
@@ -123,6 +135,7 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
       const rooms = Array.isArray(this.config.rooms) ? this.config.rooms : [];
       if (this.config.enableRoomCleaning === true && rooms.length > 0) {
         accessory.clusters.serviceArea = {
+          supportedMaps: [],
           supportedAreas: rooms.map((room: any) => ({
             areaId: Number(room.id),
             mapId: null,
@@ -136,6 +149,7 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
             },
           })),
           selectedAreas: [],
+          currentArea: null,
         };
         this.log.info(`Experimental room cleaning enabled with ${rooms.length} room(s).`);
       }
