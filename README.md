@@ -1,128 +1,99 @@
-<h1 align="center">Homebridge Xiaomi 1C Vacuum</h1>
+# homebridge-xiaomi-s12-vacuum
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/homebridge-1c-matter"><img src="https://img.shields.io/npm/v/homebridge-1c-matter.svg" alt="npm version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="package.json"><img src="https://img.shields.io/badge/node-%5E22%20%7C%7C%20%5E24-339933.svg" alt="Node.js"></a>
-  <a href="https://homebridge.io/"><img src="https://img.shields.io/badge/homebridge-2.x-purple.svg" alt="Homebridge"></a>
-  <a href="https://csa-iot.org/all-solutions/matter/"><img src="https://img.shields.io/badge/Matter-robot%20vacuum-0f7fff.svg" alt="Matter"></a>
-  <a href="#network-notes"><img src="https://img.shields.io/badge/control-local%20LAN-success.svg" alt="Local LAN"></a>
-  <a href="https://github.com/johnwatso/homebridge-xiaomi-1c-vacuum/issues"><img src="https://img.shields.io/github/issues/johnwatso/homebridge-xiaomi-1c-vacuum.svg" alt="GitHub issues"></a>
-</p>
+A Matter-native [Homebridge](https://homebridge.io) 2.0+ plugin for the **Xiaomi Robot Vacuum S12** (`xiaomi.vacuum.b106eu`), controlled entirely over the **local network** via the MIoT protocol — no cloud account required at runtime.
 
-<p align="center">
-  <img src="assets/homebridge-1c-matter.png" alt="Homebridge 1C Matter" width="320">
-</p>
-
-Matter-native Homebridge 2.0 plugin for Xiaomi Mi Robot Vacuum-Mop 1C using Local LAN control.
-
-Published on npm as [`homebridge-1c-matter`](https://www.npmjs.com/package/homebridge-1c-matter).
-
-## About
-Homebridge Xiaomi 1C Vacuum brings the Xiaomi Mi Robot Vacuum-Mop 1C (`dreame.vacuum.mc1808`) into Apple Home as a native Matter robotic vacuum. It talks directly to the vacuum over your local network using Xiaomi's miIO/MIoT protocol, so day-to-day controls do not depend on Xiaomi Cloud.
-
-The plugin focuses on the controls that make sense in Apple Home: start, pause, resume, return to dock, suction mode, battery, charging state, fault status, consumable status, Siri, scenes, and automations. Your existing Xiaomi map, no-go zones, and saved cleaning rules remain managed by the Mi Home app and are respected by the vacuum during normal whole-home cleans.
-
-## Supported Models
-This plugin is built and tested for the Xiaomi Mi Robot Vacuum-Mop 1C.
-
-Known identifiers for the supported model:
-
-- Xiaomi Mi Robot Vacuum-Mop 1C
-- Xiaomi model `STYTJ01ZHM`
-- Dreame/MIoT model `dreame.vacuum.mc1808`
-- Hardware model `1C Vacuum (MC1808)`
-
-Other Xiaomi, Mi, Dreame, or Roborock vacuums may use different local MIoT properties and actions. They are not currently supported unless a matching model profile is added.
+> This is a fork of [johnwatso/homebridge-xiaomi-1c-vacuum](https://github.com/johnwatso/homebridge-xiaomi-1c-vacuum), adapted and extended for the S12. All credit for the original plugin and architecture goes to **johnwatso**.
 
 ## Features
-- **Native HomeKit Vacuum Support:** Appears as a native vacuum in the Home app (iOS 18+ / Homebridge 2.0+).
-- **Local Control:** Bypasses Xiaomi Cloud for instant response and better privacy.
-- **Cleaning Controls:** Start cleaning, pause, resume, and return to dock.
-- **Suction Modes:** Quiet, Default, Medium, and Strong cleaning modes.
-- **Status Updates:** Reports idle, cleaning, paused, error, and returning-to-dock states.
-- **Fault Labels:** Logs common vacuum fault codes with readable descriptions.
-- **Find Vacuum:** Apple Home identify requests and the local check command can trigger the vacuum's locate prompt.
-- **Consumable Status:** Logs main brush, side brush, and filter life when status changes.
-- **Consumable Resets:** Local helper can reset main brush, side brush, and filter counters after replacement.
-- **Power Status:** Reports battery percentage and charging/docked state.
-- **Apple Home Automations:** Works with Siri, scenes, and Apple Home automations through Matter.
-- **Local Connectivity Check:** Includes a command-line check to verify local IP, token, and device ID access before pairing.
+
+- **Matter-native** — exposes the vacuum as a Matter Robotic Vacuum Cleaner, controllable from Apple Home and other Matter controllers.
+- **9 clean modes** surfaced as Matter clean modes:
+  - Vacuum: Quiet, Standard, Medium, Turbo
+  - Vacuum & Mop: Quiet, Standard, Medium, Turbo
+  - Mop Only
+- **Correct pause / resume** — resuming continues the current job instead of restarting it.
+- **Smart mode changes while paused** — changing the *cleaning type* (e.g. Vacuum → Vacuum & Mop) restarts the job; changing only the *suction level* resumes with the new suction.
+- **Room cleaning (experimental)** — expose your mapped rooms as Matter service areas and start per-room cleaning from the Home app.
+- **Accurate status reporting** — Standby, Vacuuming, Vacuum & Mop, Mopping, Returning, Charging, Docked, and the transient "repositioning" phase.
+- **Battery, charge state and consumables** (main brush, side brush, filter).
+
+## Requirements
+
+- Homebridge **2.0 or newer** with **Matter enabled**.
+- Node.js 22 or 24.
+- Your vacuum's **local IP address**, **MIoT token**, and **device ID (DID)**.
+
+### Getting the token and DID
+
+Use a tool such as the [Xiaomi Cloud Tokens Extractor](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor) to obtain the 32-character local token and the numeric device ID for your vacuum.
 
 ## Installation
-Install from npm: [homebridge-1c-matter](https://www.npmjs.com/package/homebridge-1c-matter)
 
-1. Install Homebridge 2.0 or later.
-2. Search for `homebridge-1c-matter` and install.
-3. Obtain your vacuum's **IP Address** and **32-character Token**.
+Install through the Homebridge UI (search for `homebridge-xiaomi-s12-vacuum`) or manually:
+
+```bash
+npm install -g homebridge-xiaomi-s12-vacuum
+```
 
 ## Configuration
-Add the following to your Homebridge `config.json`:
+
+Configure through the Homebridge UI, or add a platform block to your `config.json`:
 
 ```json
 {
-  "platform": "OneCMatter",
-  "name": "OneCMatter",
-  "ip": "10.11.3.248",
-  "token": "YOUR_32_CHARACTER_TOKEN",
-  "deviceId": "YOUR_DEVICE_ID",
-  "pollInterval": 30,
-  "connectAttempts": 5
+  "platforms": [
+    {
+      "platform": "OneCMatter",
+      "name": "Xiaomi S12 Vacuum",
+      "ip": "10.0.10.180",
+      "token": "your-32-character-hex-token",
+      "deviceId": "1064693991",
+      "pollInterval": 30,
+      "enableRoomCleaning": true,
+      "rooms": [
+        { "id": 12, "name": "Bedroom" },
+        { "id": 13, "name": "Kids Room" },
+        { "id": 14, "name": "Hall" },
+        { "id": 15, "name": "Living Room" },
+        { "id": 16, "name": "Master Bedroom" },
+        { "id": 17, "name": "Kitchen" },
+        { "id": 18, "name": "Bathroom" },
+        { "id": 19, "name": "Corridor" }
+      ]
+    }
+  ]
 }
 ```
 
-### How to get your Token
-You can use the **[Xiaomi-Cloud-Tokens-Extractor](https://github.com/PiotrMachowski/Xiaomi-Cloud-Tokens-Extractor)** to easily get the IP, Token, and Device ID for all your Xiaomi devices.
+### Options
 
-## Network Notes
-This plugin talks directly to the vacuum over the local Xiaomi miIO protocol on UDP port `54321`.
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | `Xiaomi S12 Vacuum` | Name shown in Homebridge and the Home app. |
+| `ip` | string | — | Local IP address of the vacuum (use a reserved DHCP lease). |
+| `token` | string | — | 32-character local MIoT token. |
+| `deviceId` | string | — | Numeric device ID (DID). |
+| `pollInterval` | number | `30` | Status poll interval in seconds (5–300). |
+| `enableRoomCleaning` | boolean | `false` | Expose mapped rooms as Matter service areas. |
+| `rooms` | array | `[]` | List of `{ id, name }` room entries. |
 
-If Homebridge and the vacuum are on the same VLAN/subnet, no special network rules should normally be required.
+## Finding your room IDs
 
-If they are on different VLANs or subnets, basic ping may work while miIO still times out. Allow the Homebridge host to reach the vacuum on UDP `54321`. Some Xiaomi vacuums only respond reliably when the request appears to come from their own subnet; if a normal allow rule is not enough, add a tightly scoped source NAT/masquerade rule for this traffic.
+The S12 does not expose custom room names over the local API — it only reports a single generic room. Room IDs are, however, sequential and stable once your map has been split into named rooms in the Mi Home app.
 
-| Setting | Value |
-| :--- | :--- |
-| Source | Homebridge host IP |
-| Destination | Vacuum IP |
-| Protocol | UDP |
-| Destination Port | `54321` |
-| Action | Allow |
-| If cross-subnet miIO still times out | Add source NAT/masquerade for this same source, destination, protocol, and port |
+To discover which ID maps to which room, start a single-room clean for each ID and observe where the vacuum goes. In testing, IDs started at **10** and incremented per room (e.g. `10, 11, 12, …`). Map out all your rooms once, then add them to the configuration.
 
-You can test local connectivity outside Homebridge with:
+## Notes and limitations
 
-```bash
-npm run check:local -- <vacuum-ip> <token> <device-id>
-```
+- **Battery percentage in Apple Home** may not refresh in real time on the tile due to how Homebridge's Matter layer emits the `PowerSource` battery attribute. The value is reported correctly and can be read on demand.
+- Room cleaning is marked experimental; behaviour depends on your firmware and map state.
+- The vacuum must be reachable on the local network; the plugin does not use the Xiaomi cloud at runtime.
 
-Add `--raw` to print the raw MIoT response instead of the human-readable summary.
+## Credits
 
-To trigger the vacuum's locate prompt:
-
-```bash
-npm run check:local -- <vacuum-ip> <token> <device-id> --find
-```
-
-After replacing a consumable, reset its counter with:
-
-```bash
-npm run check:local -- <vacuum-ip> <token> <device-id> --reset main-brush
-npm run check:local -- <vacuum-ip> <token> <device-id> --reset filter
-npm run check:local -- <vacuum-ip> <token> <device-id> --reset side-brush
-```
-
-## Pairing
-Once Homebridge starts, check the logs for the **Matter QR Code**. Scan this code with your Home app to add the vacuum.
-
-## Support
-If you run into setup problems, local miIO timeouts, Homebridge/Matter pairing issues, or model-specific quirks, please open a [GitHub issue](https://github.com/johnwatso/homebridge-xiaomi-1c-vacuum/issues).
-
-When reporting an issue, include your vacuum model, Homebridge version, Node.js version, network layout, and the output of:
-
-```bash
-npm run check:local -- <vacuum-ip> <token> <device-id> --raw
-```
+- Original plugin: [johnwatso/homebridge-xiaomi-1c-vacuum](https://github.com/johnwatso/homebridge-xiaomi-1c-vacuum)
+- S12 adaptation: [garlik82](https://github.com/garlik82)
 
 ## License
+
 MIT

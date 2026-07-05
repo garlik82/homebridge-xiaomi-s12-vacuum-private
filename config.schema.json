@@ -1,99 +1,61 @@
 {
   "pluginAlias": "OneCMatter",
   "pluginType": "platform",
-  "headerDisplay": "1C Matter - Xiaomi 1C Vacuum (Matter Native - Local LAN)",
+  "singular": true,
+  "headerDisplay": "Matter-native Homebridge plugin for the Xiaomi Robot Vacuum S12 (xiaomi.vacuum.b106eu). Requires Homebridge 2.0+ with Matter enabled.",
+  "footerDisplay": "For help and documentation, visit the [project repository](https://github.com/garlik82/homebridge-xiaomi-s12-vacuum).",
   "schema": {
     "type": "object",
     "properties": {
       "name": {
-        "title": "Display Name",
+        "title": "Name",
         "type": "string",
-        "default": "Xiaomi 1C Vacuum",
-        "description": "The name shown for the vacuum in Homebridge and Apple Home."
+        "default": "Xiaomi S12 Vacuum",
+        "required": true,
+        "description": "The name that will appear in Homebridge and the Home app."
       },
       "ip": {
-        "title": "Device IP Address",
+        "title": "IP Address",
         "type": "string",
+        "format": "ipv4",
         "required": true,
-        "description": "The local IP address of your 1C vacuum (e.g., 192.168.1.50)."
+        "placeholder": "10.0.10.180",
+        "description": "The local IP address of your vacuum. A static/reserved DHCP lease is strongly recommended."
       },
       "token": {
-        "title": "Device Token",
+        "title": "Token",
         "type": "string",
         "required": true,
-        "description": "The 32-character local token for your vacuum."
+        "pattern": "^[a-fA-F0-9]{32}$",
+        "placeholder": "32-character hexadecimal token",
+        "description": "The 32-character local MIoT token. Extract it with a tool such as the Xiaomi Cloud Tokens Extractor."
       },
       "deviceId": {
         "title": "Device ID (DID)",
         "type": "string",
         "required": true,
-        "description": "The numeric Device ID of your vacuum (needed for local MIoT commands)."
+        "pattern": "^\\d+$",
+        "placeholder": "1064693991",
+        "description": "The numeric device ID (DID) of your vacuum."
       },
       "pollInterval": {
-        "title": "Polling Interval (seconds)",
+        "title": "Poll Interval (seconds)",
         "type": "integer",
         "default": 30,
         "minimum": 5,
         "maximum": 300,
-        "description": "How often to refresh vacuum status. Commands trigger an additional fast refresh."
-      },
-      "connectAttempts": {
-        "title": "Connection Attempts",
-        "type": "integer",
-        "default": 5,
-        "minimum": 1,
-        "maximum": 10,
-        "description": "How many local UDP retries to make before giving up on a command or status read."
-      },
-      "requestTimeout": {
-        "title": "Local Request Timeout (milliseconds)",
-        "type": "integer",
-        "default": 15000,
-        "minimum": 3000,
-        "maximum": 60000,
-        "description": "Maximum time to wait for a local vacuum request before resetting the connection and retrying."
-      },
-      "matterUpdateTimeout": {
-        "title": "Matter State Update Timeout (milliseconds)",
-        "type": "integer",
-        "default": 10000,
-        "minimum": 3000,
-        "maximum": 60000,
-        "description": "Maximum time to wait for Homebridge/Matter state updates before treating the refresh as failed."
-      },
-      "statusUpdateWatchdog": {
-        "title": "Status Update Watchdog (milliseconds)",
-        "type": "integer",
-        "default": 90000,
-        "minimum": 30000,
-        "maximum": 300000,
-        "description": "Maximum time a status refresh may stay in progress before a later poll is allowed to recover."
-      },
-      "enableConsumableLogs": {
-        "title": "Log Consumable Status",
-        "type": "boolean",
-        "default": true,
-        "description": "Log filter and brush life when values change."
-      },
-      "lowConsumableThreshold": {
-        "title": "Low Consumable Warning Threshold (%)",
-        "type": "integer",
-        "default": 20,
-        "minimum": 0,
-        "maximum": 100,
-        "description": "Warn when filter or brush life is at or below this percentage."
+        "description": "How often to poll the vacuum for status updates. 30 seconds is recommended."
       },
       "enableRoomCleaning": {
-        "title": "Enable Room Cleaning (Experimental)",
+        "title": "Enable Room Cleaning (experimental)",
         "type": "boolean",
         "default": false,
-        "description": "EXPERIMENTAL: expose the rooms configured below as Matter service areas so a controller can start a room-by-room clean. Requires the vacuum to have a saved map with segmented rooms; on firmware that does not persist maps this may not work. Leave off to keep the plugin's default behaviour unchanged."
+        "description": "Expose configured rooms as Matter service areas so you can start per-room cleaning from the Home app."
       },
       "rooms": {
         "title": "Rooms",
         "type": "array",
-        "description": "Segment/room IDs from your vacuum's saved map, paired with friendly names. Only used when Room Cleaning is enabled.",
-        "condition": { "functionBody": "return model.enableRoomCleaning === true;" },
+        "description": "The rooms defined on your vacuum's map. Room IDs are device-specific and usually start at 10.",
         "items": {
           "type": "object",
           "properties": {
@@ -101,35 +63,43 @@
               "title": "Room ID",
               "type": "integer",
               "required": true,
-              "description": "Numeric segment/room ID from the vacuum map (discoverable via the Mi Home app or a one-time cloud map dump)."
+              "placeholder": "12"
             },
             "name": {
-              "title": "Name",
+              "title": "Room Name",
               "type": "string",
               "required": true,
-              "description": "Friendly name shown in your controller (e.g. Kitchen)."
+              "placeholder": "Kitchen"
             }
           }
         }
-      },
-      "roomCleanRepeats": {
-        "title": "Room Clean Repeats",
-        "type": "integer",
-        "default": 1,
-        "minimum": 1,
-        "maximum": 3,
-        "condition": { "functionBody": "return model.enableRoomCleaning === true;" },
-        "description": "How many times to clean each selected room per run."
-      },
-      "roomCleanSuction": {
-        "title": "Room Clean Suction Level",
-        "type": "integer",
-        "default": 2,
-        "minimum": 0,
-        "maximum": 3,
-        "condition": { "functionBody": "return model.enableRoomCleaning === true;" },
-        "description": "Suction level used during room cleaning (0 Quiet, 1 Default, 2 Medium, 3 Strong)."
       }
     }
-  }
+  },
+  "layout": [
+    "name",
+    "ip",
+    "token",
+    "deviceId",
+    "pollInterval",
+    "enableRoomCleaning",
+    {
+      "key": "rooms",
+      "type": "array",
+      "title": "Rooms",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        {
+          "type": "div",
+          "displayFlex": true,
+          "flex-direction": "row",
+          "items": [
+            "rooms[].id",
+            "rooms[].name"
+          ]
+        }
+      ]
+    }
+  ]
 }
