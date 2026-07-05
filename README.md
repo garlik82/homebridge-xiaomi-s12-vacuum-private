@@ -85,9 +85,9 @@ To discover which ID maps to which room, start a single-room clean for each ID a
 
 ## Notes and limitations
 
-- **Battery percentage in Apple Home** may not refresh in real time on the tile due to how Homebridge's Matter layer emits the `PowerSource` battery attribute. The value is reported correctly and can be read on demand.
 - Room cleaning is marked experimental; behaviour depends on your firmware and map state.
 - The vacuum must be reachable on the local network; the plugin does not use the Xiaomi cloud at runtime.
+- A working Matter hub (e.g. HomePod or Apple TV) with a healthy network connection is required for reliable real-time state updates in Apple Home.
 
 ## Credits
 
