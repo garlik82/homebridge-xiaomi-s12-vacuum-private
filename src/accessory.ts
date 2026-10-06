@@ -92,6 +92,11 @@ const ALARM_PIID = 1;
 
 const DEFAULT_MATTER_UPDATE_TIMEOUT_MS = 10000;
 const DEFAULT_STATUS_UPDATE_WATCHDOG_MS = 90000;
+const DEFAULT_POLL_INTERVAL_SECONDS = 30;
+const IDENTIFY_DEDUP_WINDOW_MS = 2000;
+// Mi Home changes are not pushed over the local miIO transport. Keep the
+// Matter view fresh enough that Siri does not act on an old docked state.
+const EXTERNAL_STATE_POLL_INTERVAL_MS = 5000;
 
 const CONSUMABLES = [
   { key: 'mainBrush', label: 'Main brush', siid: SWEEP_SIID, lifePiid: MAIN_BRUSH_LIFE_PIID },
@@ -124,8 +129,10 @@ export class OneCVacuumAccessory {
   private cleanModeAtPause = -1; // mode index when pause was triggered
   private initialSyncDone = false; // sync clean mode from device only once on startup
   private lastChargeState = -1; // track charge state changes separately
+  private lastIdentifyAt = Number.NEGATIVE_INFINITY;
   private readonly matterUpdateTimeoutMs: number;
   private readonly statusUpdateWatchdogMs: number;
+  private readonly pollIntervalMs: number;
 
   constructor(
     private readonly platform: OneCMatterPlatform,
@@ -140,16 +147,31 @@ export class OneCVacuumAccessory {
     this.statusUpdateWatchdogMs = Number.isFinite(statusUpdateWatchdog) && statusUpdateWatchdog > 0
       ? statusUpdateWatchdog
       : DEFAULT_STATUS_UPDATE_WATCHDOG_MS;
+    const pollInterval = Number(this.platform.config.pollInterval);
+    this.pollIntervalMs = (Number.isFinite(pollInterval) && pollInterval > 0
+      ? pollInterval
+      : DEFAULT_POLL_INTERVAL_SECONDS) * 1000;
 
     // Register handlers
     this.accessory.handlers = {
       identify: {
         identify: async () => {
+          const now = Date.now();
+          if (now - this.lastIdentifyAt < IDENTIFY_DEDUP_WINDOW_MS) {
+            this.platform.log.debug('Ignoring duplicate Matter Identify command');
+            return;
+          }
+          this.lastIdentifyAt = now;
+
           this.platform.log.info('Matter: Identify command');
           try {
             // Best-effort: no dedicated locate action confirmed for this model yet.
             await this.client.setProperty(ALARM_SIID, ALARM_PIID, true);
           } catch (e: any) {
+            // Do not suppress a controller retry when the locate action itself failed.
+            if (this.lastIdentifyAt === now) {
+              this.lastIdentifyAt = Number.NEGATIVE_INFINITY;
+            }
             this.platform.log.warn('Locate (identify) failed - this action is unconfirmed for the S12:', e.message);
           }
           this.scheduleStatusUpdate();
@@ -279,9 +301,9 @@ export class OneCVacuumAccessory {
     }
 
     // Polling
-    const interval = (this.platform.config.pollInterval || 30) * 1000;
-    setInterval(() => this.updateStatus(), interval);
-    setTimeout(() => this.updateStatus(true), 1000); // Initial update after Matter registration settles
+    setInterval(() => this.updateStatus(), this.pollIntervalMs);
+    setInterval(() => this.updateStatus(false, false), EXTERNAL_STATE_POLL_INTERVAL_MS);
+    setTimeout(() => this.updateStatus(true), 1000); // Initial update after Matter registration settles (forced: syncs clean mode)
   }
 
   private scheduleStatusUpdate(delay = 500) {
@@ -371,7 +393,7 @@ export class OneCVacuumAccessory {
     }
   }
 
-  async updateStatus(force = false) {
+  async updateStatus(force = false, includeConsumables = true) {
     const now = Date.now();
     if (this.isUpdating) {
       const updateAge = now - this.updateStartedAt;
@@ -398,7 +420,7 @@ export class OneCVacuumAccessory {
         { siid: STATUS_SIID, piid: SWEEP_MODE_PIID },
         { siid: BATTERY_SIID, piid: BATTERY_PIID },
         { siid: SWEEP_SIID, piid: SUCTION_PIID },
-        ...CONSUMABLES.map(item => ({ siid: item.siid, piid: item.lifePiid })),
+        ...(includeConsumables ? CONSUMABLES.map(item => ({ siid: item.siid, piid: item.lifePiid })) : []),
       ]);
 
       if (!props || props.length === 0) return;
@@ -423,8 +445,11 @@ export class OneCVacuumAccessory {
       const isCleaning = (status === 5 && !isDocked) || status === 6 || status === 7;
       const isStandby = status === 1;
 
-      this.platform.log.info(`Vacuum status: ${describeStatus(status, dockFlag)}`);
-      this.logConsumables(consumables);
+      // Debug level: with the 5s external-state poll this would flood the log at info.
+      this.platform.log.debug(`Vacuum status: ${describeStatus(status, dockFlag)}`);
+      if (includeConsumables) {
+        this.logConsumables(consumables);
+      }
       this.consecutiveFailures = 0;
       this.nextAllowedUpdate = 0;
 
@@ -508,7 +533,7 @@ export class OneCVacuumAccessory {
 
     } catch (e: any) {
       this.consecutiveFailures++;
-      const baseInterval = (this.platform.config.pollInterval || 30) * 1000;
+      const baseInterval = Math.min(this.pollIntervalMs, EXTERNAL_STATE_POLL_INTERVAL_MS);
       const backoff = Math.min(baseInterval * 2 ** this.consecutiveFailures, 5 * 60 * 1000);
       this.nextAllowedUpdate = Date.now() + backoff;
       this.platform.log.error('Error updating status:', e.message);

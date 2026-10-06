@@ -94,6 +94,14 @@ function label(labels, value, fallback) {
   return labels[value] || `${fallback} ${value}`;
 }
 
+function assertMiotSuccess(result, label) {
+  const responses = Array.isArray(result) ? result : [result];
+  const failed = responses.find(response => response?.code !== undefined && response.code !== 0);
+  if (failed) {
+    throw new Error(`${label} failed with MIoT code ${failed.code}`);
+  }
+}
+
 function printHumanSummary(results) {
   const fault = getValue(results, 'fault');
   const status = getValue(results, 'status');
@@ -179,6 +187,10 @@ async function testAction() {
       device.call('get_properties', props, { retries: 5 }),
       'get_properties',
     );
+    if (!Array.isArray(result)) {
+      throw new Error('Unexpected response format from get_properties');
+    }
+    assertMiotSuccess(result, 'get_properties');
 
     if (command === '--raw') {
       console.log('Property result:', JSON.stringify(result, null, 2));

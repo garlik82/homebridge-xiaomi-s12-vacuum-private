@@ -4,6 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2026-08-27
+
+### Added
+- **Structured Support:** Added GitHub issue forms for bug reports and feature requests so real-world model, network, and controller feedback can guide future updates.
+- **Remote-Control Troubleshooting:** Documented the Mi Home remote-control and Siri return-to-dock behaviour, including the quick state refresh introduced in 1.1.6.
+
+### Changed
+- **Discoverability:** Refined the repository description and added topics for Homebridge, Matter, Xiaomi, Mi Home, local LAN control, and robotic vacuums.
+
+## [1.1.6] - 2026-08-27
+
+### Fixed
+- **Siri Return-to-Dock After Remote Control:** Mi Home's manual remote control can leave the vacuum reporting `Idle` with a stale local "charging / docked" property after it has been moved away from its dock. The plugin now trusts the explicit operational status for charging and docked state, so it reports that remote-moved idle vacuum as off-dock and Siri can send the return-to-dock command.
+- **Conservative Battery Charge State:** Battery charging is no longer inferred from the stale local charging property while the vacuum is idle, preventing Apple Home from incorrectly treating an off-dock vacuum as fully charged or docked.
+
+## [1.1.5] - 2026-08-21
+
+### Fixed
+- **External Control State:** Poll the local operational state every 5 seconds, so state changes made in Mi Home are promptly reflected in Apple Home and Siri without increasing the full status/consumables polling frequency.
+- **Dock State Reporting:** Expose Matter's distinct `Charging` and `Docked` operational states instead of reporting both as generic stopped, preventing Siri from using an inaccurate dock status.
+
+## [1.1.4] - 2026-08-17
+
+### Fixed
+- **Property Error Recovery:** MIoT per-property error responses now fail the status read and enter the existing retry/backoff path instead of being interpreted as device values. Exhausted property retries now surface a clear error rather than silently returning an empty result.
+- **Diagnostic Accuracy:** The local diagnostic helper now reports invalid or failed `get_properties` responses instead of displaying a misleading partial summary.
+- **Secret-Safe Validation:** Invalid local tokens are no longer included in Homebridge log messages, and IP validation now rejects out-of-range IPv4 addresses.
+- **Dependency Audit:** Pinned patched transitive dependency versions through npm overrides, removing the known production audit findings without downgrading `miio`.
+
+### Added
+- **Automated Tests and CI:** Added Node's built-in test suite and a GitHub Actions matrix for Node 22 and 24, including the production dependency audit.
+- **License:** Added the MIT license text to the repository and npm package.
+
+### Changed
+- **Tooling:** Updated the Homebridge development dependency to 2.4 and aligned Node type definitions with the supported Node 22+ runtime.
+- **Package Size:** Reduced the bundled logo size while retaining a high-resolution image for the README.
+
 ## [1.1.3] - 2026-06-22
 
 ### Added

@@ -1,4 +1,5 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
+import { isIP } from 'node:net';
 import { OneCVacuumAccessory } from './accessory.js';
 import { XiaomiLocalClient } from './mi-local.js';
 
@@ -28,17 +29,16 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
       return;
     }
 
-    const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
     const tokenRegex = /^[a-fA-F0-9]{32}$/;
     const deviceIdRegex = /^\d+$/;
 
-    if (!ipRegex.test(this.config.ip)) {
+    if (isIP(this.config.ip) !== 4) {
       this.log.error(`Invalid IP address format: "${this.config.ip}". Please check your config.json`);
       return;
     }
 
     if (!tokenRegex.test(this.config.token)) {
-      this.log.error(`Invalid Token format: "${this.config.token}". The local token must be exactly 32 hexadecimal characters.`);
+      this.log.error('Invalid Token format. The local token must be exactly 32 hexadecimal characters.');
       return;
     }
 

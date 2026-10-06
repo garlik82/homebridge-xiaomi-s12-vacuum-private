@@ -1,0 +1,66 @@
+name: Bug report
+description: Tell us about a reproducible problem with the Xiaomi 1C Matter plugin.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the plugin. Do not include your Xiaomi token, Matter QR code, or other credentials.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: For example, 1.1.7.
+    validations:
+      required: true
+  - type: input
+    id: homebridge-version
+    attributes:
+      label: Homebridge and Node.js versions
+      description: For example, Homebridge 2.4.0 on Node.js 24.16.0.
+    validations:
+      required: true
+  - type: dropdown
+    id: controller
+    attributes:
+      label: Matter controller
+      options:
+        - Apple Home / Siri
+        - Google Home
+        - Amazon Alexa
+        - Samsung SmartThings
+        - Another controller
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Vacuum model and network setup
+      description: Include the vacuum model, firmware if known, and whether Homebridge and the vacuum are on the same subnet. Do not include IP addresses unless necessary.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour and redacted logs
+      description: Include relevant Homebridge logs and, if helpful, the output of the local check. Remove tokens, QR codes, and sensitive network details.
+    validations:
+      required: true

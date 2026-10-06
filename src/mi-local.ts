@@ -1,5 +1,8 @@
 import miio from 'miio';
 
+type DeviceFactory = (options: { address: string; token: string }) => Promise<any>;
+type Sleep = (milliseconds: number) => Promise<void>;
+
 export class XiaomiLocalClient {
   private device: any = null;
   private readonly connectAttempts: number;
@@ -8,6 +11,8 @@ export class XiaomiLocalClient {
   constructor(
     private readonly log: any,
     private readonly config: any,
+    private readonly deviceFactory: DeviceFactory = miio.device,
+    private readonly sleep: Sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   ) {
     this.connectAttempts = Number(this.config.connectAttempts || 5);
     const requestTimeout = Number(this.config.requestTimeout);
@@ -58,7 +63,7 @@ export class XiaomiLocalClient {
     try {
       await this.resetDevice();
       this.log.info(`Connecting to Xiaomi device at ${this.config.ip}:54321`);
-      this.device = await miio.device({
+      this.device = await this.deviceFactory({
         address: this.config.ip,
         token: this.config.token,
       });
@@ -74,6 +79,7 @@ export class XiaomiLocalClient {
   async getProperties(props: { siid: number; piid: number }[]) {
     const maxRetries = 3;
     let attempt = 0;
+    let lastError: Error | undefined;
 
     while (attempt < maxRetries) {
       try {
@@ -89,6 +95,7 @@ export class XiaomiLocalClient {
         if (!Array.isArray(results)) {
           throw new Error('Unexpected response format from get_properties');
         }
+        this.assertMiotSuccess(results, 'get_properties');
 
         return results.map((res: any, i: number) => {
           const prop = props[i];
@@ -102,14 +109,16 @@ export class XiaomiLocalClient {
         }).filter(item => item.siid !== undefined && item.piid !== undefined);
       } catch (e: any) {
         attempt++;
+        lastError = e instanceof Error ? e : new Error(String(e));
         this.log.warn(`Failed to get local properties (attempt ${attempt}/${maxRetries}):`, e.message);
         await this.resetDevice();
         if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          await this.sleep(2000 * attempt);
         }
       }
     }
-    return [];
+
+    throw new Error(`Failed to get local properties after ${maxRetries} attempts: ${lastError?.message ?? 'Unknown error'}`);
   }
 
   async doAction(siid: number, aiid: number, params: any[] = []) {

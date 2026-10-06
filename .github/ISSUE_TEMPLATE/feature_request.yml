@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a workflow or control that would make the plugin more useful.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Real-world Xiaomi 1C workflows help set the direction for this plugin. Please describe the outcome you want rather than only a technical implementation.
+  - type: input
+    id: model
+    attributes:
+      label: Vacuum model and firmware
+      description: For example, Xiaomi Mi Robot Vacuum-Mop 1C (STYTJ01ZHM), with firmware if known.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to accomplish?
+      description: Describe the real-world routine or pain point.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+      description: Explain how you would expect it to work in Apple Home, Siri, or another Matter controller.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What do you do today, and why is that insufficient?
