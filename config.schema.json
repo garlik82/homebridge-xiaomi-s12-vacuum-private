@@ -1,5 +1,5 @@
 {
-  "pluginAlias": "OneCMatter",
+  "pluginAlias": "XiaomiS12Vacuum",
   "pluginType": "platform",
   "singular": true,
   "headerDisplay": "Matter-native Homebridge plugin for the Xiaomi Robot Vacuum S12 (xiaomi.vacuum.b106eu). Requires Homebridge 2.0+ with Matter enabled.",

@@ -1,4 +1,4 @@
-import { OneCMatterPlatform } from './platform.js';
+import { XiaomiS12VacuumPlatform } from './platform.js';
 import { XiaomiLocalClient } from './mi-local.js';
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ function describeStatus(status: number | undefined, dockFlag: number | undefined
   return `Unknown status ${status}`;
 }
 
-export class OneCVacuumAccessory {
+export class XiaomiS12VacuumAccessory {
   private isUpdating = false;
   private updateStartedAt = 0;
   private updateToken = 0;
@@ -135,7 +135,7 @@ export class OneCVacuumAccessory {
   private readonly pollIntervalMs: number;
 
   constructor(
-    private readonly platform: OneCMatterPlatform,
+    private readonly platform: XiaomiS12VacuumPlatform,
     private readonly accessory: any, // MatterAccessory
     private readonly client: XiaomiLocalClient,
   ) {

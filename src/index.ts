@@ -1,6 +1,6 @@
 import { API } from 'homebridge';
-import { OneCMatterPlatform } from './platform.js';
+import { XiaomiS12VacuumPlatform } from './platform.js';
 
 export default (api: API) => {
-  api.registerPlatform('homebridge-1c-matter', 'OneCMatter', OneCMatterPlatform);
+  api.registerPlatform('homebridge-xiaomi-s12-vacuum', 'XiaomiS12Vacuum', XiaomiS12VacuumPlatform);
 };

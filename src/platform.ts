@@ -1,9 +1,9 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import { isIP } from 'node:net';
-import { OneCVacuumAccessory } from './accessory.js';
+import { XiaomiS12VacuumAccessory } from './accessory.js';
 import { XiaomiLocalClient } from './mi-local.js';
 
-export class OneCMatterPlatform implements DynamicPlatformPlugin {
+export class XiaomiS12VacuumPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory[] = [];
   public client?: XiaomiLocalClient;
 
@@ -58,7 +58,7 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
       // Unregister any cached legacy HAP accessories to avoid duplicates/stale accessories in Homebridge
       if (this.accessories.length > 0) {
         this.log.info(`Removing ${this.accessories.length} cached legacy HAP accessories.`);
-        this.api.unregisterPlatformAccessories('homebridge-1c-matter', 'OneCMatter', this.accessories);
+        this.api.unregisterPlatformAccessories('homebridge-xiaomi-s12-vacuum', 'XiaomiS12Vacuum', this.accessories);
         this.accessories.length = 0;
       }
 
@@ -74,14 +74,14 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
       }
 
       const matter = this.api.matter!;
-      const displayName = this.config.name || 'Xiaomi 1C Vacuum';
+      const displayName = this.config.name || 'Xiaomi S12 Vacuum';
       
       const accessory: any = {
         UUID: uuid,
         displayName,
         deviceType: matter.deviceTypes.RoboticVacuumCleaner,
         manufacturer: 'Xiaomi',
-        model: '1C Vacuum (MC1808)',
+        model: 'S12 Vacuum (b106eu)',
         serialNumber: String(this.config.deviceId),
         firmwareRevision,
         context: { device: { ip: this.config.ip, did: this.config.deviceId } },
@@ -154,8 +154,8 @@ export class OneCMatterPlatform implements DynamicPlatformPlugin {
         this.log.info(`Experimental room cleaning enabled with ${rooms.length} room(s).`);
       }
 
-      new OneCVacuumAccessory(this, accessory, this.client);
-      await matter.registerPlatformAccessories('homebridge-1c-matter', 'OneCMatter', [accessory]);
+      new XiaomiS12VacuumAccessory(this, accessory, this.client);
+      await matter.registerPlatformAccessories('homebridge-xiaomi-s12-vacuum', 'XiaomiS12Vacuum', [accessory]);
     } else {
       this.log.warn('Matter is NOT enabled. This plugin is optimized for Matter but will fallback to legacy mode if implemented.');
       // Legacy fallback could be implemented here if desired, but user wants Matter.

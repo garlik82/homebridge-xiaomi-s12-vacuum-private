@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { OneCVacuumAccessory } from '../dist/accessory.js';
+import { XiaomiS12VacuumAccessory } from '../dist/accessory.js';
 
 // Xiaomi S12 (xiaomi.vacuum.b106eu) MIoT mapping — see src/accessory.ts.
 const STATUS = { siid: 2, piid: 1 };
@@ -50,7 +50,7 @@ function createFixture(t, config = {}, propertyValues = {}) {
   const accessory = { UUID: 'test-vacuum', handlers: {} };
   const platform = { api: { matter }, config, log: logger() };
 
-  const controller = new OneCVacuumAccessory(platform, accessory, client);
+  const controller = new XiaomiS12VacuumAccessory(platform, accessory, client);
   return { accessory, actions, client, controller, intervals, properties, updates };
 }
 
