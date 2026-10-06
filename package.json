@@ -39,7 +39,8 @@
     "check:local": "node test_action.js",
     "test": "npm run build && node --test test/*.test.js",
     "watch": "tsc -w",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
